@@ -1,0 +1,5 @@
+*.DS_Store
+experimental
+data/*
+out
+potrace-1.16.mac-x86_64
