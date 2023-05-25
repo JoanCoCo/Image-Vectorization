@@ -2,14 +2,16 @@ import torch
 import numpy as np
 from PIL import Image
 from PIL import ImageFilter
+from tqdm import tqdm
 
 class Flattener():
-    def __init__(self, palette : np.array, src_image : str) -> None:
+    def __init__(self, palette : np.array, src_image : str, display_progress_bar : bool = False) -> None:
         img = Image.open(src_image).convert("RGBA")
         self.reference = torch.tensor(np.array(img).astype(float) / 255.0)
         self.palette = torch.tensor(palette)
         self.flat_image = self.reference[:, :, 0:3].clone().detach() #torch.rand_like(self.reference[:, :, 0:3], requires_grad=True)
         self.flat_image.requires_grad = True
+        self.progress_bar = display_progress_bar
 
     def model_filter(self, image : Image, iterations : int = 5) -> Image:
         result = image.filter(ImageFilter.ModeFilter)
@@ -33,7 +35,7 @@ class Flattener():
 
     def optimize(self, iterations : int, lr : float = 0.01, verbose : int = 0):
         optimizer = torch.optim.Adam([self.flat_image], lr=lr)
-        for it in range(iterations):
+        for it in tqdm(range(iterations), ncols=60, disable=not self.progress_bar, bar_format="|{bar}|{desc}: {percentage:3.0f}%"):
             optimizer.zero_grad()
             pal = self.palette_loss()
             img = self.image_loss()

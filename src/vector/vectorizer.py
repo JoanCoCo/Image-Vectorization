@@ -5,19 +5,22 @@ from PIL import Image
 from PIL import ImageFilter
 import cairosvg
 import shutil
+from tqdm import tqdm
 
 class Vectorizer():
     def __init__(self, palette : np.array, mask : np.array, output : str,
                  dpi : int = 150,
                  layers_folder : str = None,
                  potrace_src : str = "potrace-1.16.mac-x86_64/potrace",
-                 remove_intermediate_files : bool = False) -> None:
+                 remove_intermediate_files : bool = False,
+                 display_progress_bar : bool = False) -> None:
         self.palette = palette
         self.histogram = []
         self.dpi = dpi
         self.potrace = potrace_src
         self.output = output
         self.remove_files = remove_intermediate_files
+        self.progress_bar = display_progress_bar
         for i in range(palette.shape[0]):
             v = np.count_nonzero(mask == i)
             self.histogram.append((i, v))
@@ -49,7 +52,7 @@ class Vectorizer():
     
     def generate_vector_layers(self) -> None:
         n = self.palette.shape[0]
-        for i, _ in self.histogram:
+        for i, _ in tqdm(self.histogram, ncols=60, disable=not self.progress_bar, bar_format="|{bar}|{desc}: {percentage:3.0f}%"):
             fillcolor = np.squeeze(self.palette[i])
             fillcolor_hex = "{:02X}{:02X}{:02X}".format(fillcolor[0], fillcolor[1], fillcolor[2])
             bmp_filename = os.path.join(self.bmp_folder, "layer_{:d}.bmp".format(n))
@@ -64,13 +67,13 @@ class Vectorizer():
             subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=True)
             n = n - 1
 
-    def render_vector_layers(self, refinement_steps : int = 3) -> None:
+    def render_vector_layers(self, refinement_steps : int = 3, use_antialiasing=True) -> None:
         n = self.palette.shape[0]
         result = None
-        for i, _ in self.histogram:
+        for i, _ in tqdm(self.histogram, ncols=60, disable=not self.progress_bar, bar_format="|{bar}|{desc}: {percentage:3.0f}%"):
             svg_filename = os.path.join(self.svg_folder, "layer_{:d}.svg".format(n))
             render_filename = os.path.join(self.render_folder, "layer_{:d}.png".format(n))
-            cairosvg.svg2png(url=svg_filename, write_to=render_filename, dpi=self.dpi)
+            cairosvg.svg2png(url=svg_filename, write_to=render_filename, dpi=self.dpi * (2 if use_antialiasing else 1))
             if result is None:
                 result = Image.open(render_filename).convert("RGBA")
             else:
@@ -79,6 +82,8 @@ class Vectorizer():
         #result.save(os.path.join(self.output_folder, "result.png"))
         for _ in range(refinement_steps):
             result = result.filter(ImageFilter.ModeFilter)
+        if use_antialiasing:
+            result = result.resize((result.width // 2, result.height // 2), resample=Image.ANTIALIAS)
         result.save(self.output)
         if self.remove_files:
             shutil.rmtree(self.bmp_folder)

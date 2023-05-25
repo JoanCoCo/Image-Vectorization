@@ -1,13 +1,16 @@
 import torch
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 
 class PaletteGenerator_v2():
     def __init__(self, src_image_file: str, palette_size : int, 
                  cell_size : tuple[int, int] = (32, 32), 
                  grid_size : tuple[int, int] = None,
                  color_distance_weight : float = 1.0,
-                 color_similarity_weight : float = 1.0) -> None:
+                 color_similarity_weight : float = 1.0,
+                 display_progress_bar : bool = False) -> None:
+        self.progress_bar = display_progress_bar
         self.target = torch.tensor(np.array(Image.open(src_image_file).convert("RGBA"), dtype=float) / 255.0).float()
         self.image_resolution = (self.target.shape[0], self.target.shape[1])
         if not grid_size is None:
@@ -177,7 +180,7 @@ class PaletteGenerator_v2():
     def optimize_palette(self, iterations : tuple[int, int] = 1000, lr : float = 0.01, verbose : int = 0) -> None:
         # Initialization of the grid.
         optimizer = torch.optim.Adam([self.grid_palette], lr=lr)
-        for it in range(iterations[0]):
+        for it in tqdm(range(iterations[0]), ncols=60, disable=not self.progress_bar, bar_format="|{bar}|{desc}: {percentage:3.0f}%"):
             optimizer.zero_grad()
             col = self.color_loss()
             loss = col
@@ -190,7 +193,7 @@ class PaletteGenerator_v2():
             self.grid_palette.data.clamp_(0.0, 1.0)
         # Refinement of the color palette.
         optimizer = torch.optim.Adam([self.palette_weights], lr=lr)
-        for it in range(iterations[1]):
+        for it in tqdm(range(iterations[1]), ncols=60, disable=not self.progress_bar, bar_format="|{bar}|{desc}: {percentage:3.0f}%"):
             optimizer.zero_grad()
             cdl = self.cdl_weight * self.color_distance_loss()
             csl = self.csl_weight * self.color_similarity_loss_v2()

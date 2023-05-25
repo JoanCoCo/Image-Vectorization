@@ -1,15 +1,17 @@
 import numpy as np
 from PIL import Image
 from PIL import ImageFilter
+from tqdm import tqdm
 
 class LayerGenerator():
-    def __init__(self, image, palette) -> None:
+    def __init__(self, image : np.array, palette : np.array, display_progress_bar : bool = False) -> None:
         self.reference = image
         self.palette = palette
+        self.progress_bar = display_progress_bar
 
     def denoise_mask(self, mask : Image, refinement_steps : int = 7) -> np.array:
         pil_mask = Image.fromarray((mask[:, :, 0] + 1).astype(np.uint8))
-        for _ in range(refinement_steps):
+        for _ in tqdm(range(refinement_steps), ncols=60, disable=not self.progress_bar, bar_format="|{bar}|{desc}: {percentage:3.0f}%"):
             pil_mask = pil_mask.filter(ImageFilter.ModeFilter)
         np_mask = np.array(pil_mask).astype(int) - 1
         return np_mask[:, :, None]
