@@ -1,5 +1,6 @@
 # Image Vectorization
 This repository provides a program based on Python to vectorize images. Therefore, it allows to process a given image to discretize its colors, use them to segment the image, generate vector shape layers and render them together to obtained an stylized copy of higher resolution.
+
 ![](https://github.com/JoanCoCo/Image-Vectorization/blob/main/images/examples.png?raw=true)
 
 ## Dependecies
@@ -52,4 +53,4 @@ arguments:
   --config CONFIG                   Configuration file defining the arguments for the system (default: None).
 ```
 
-Usage example: ``python main.py --input=data/zelda/5.JPG --output=zelda_hd/result.png --dpi=300 --palette-size=32 --cell-size=96x96 --flattening-steps=21``
+Usage example: ``python main.py --input=data/zelda.jpg --output=zelda_hd/result.png --dpi=300 --palette-size=32 --cell-size=96x96 --flattening-steps=21``
