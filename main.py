@@ -62,6 +62,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Python program to vectorize images. Given an input image, \
                                      it generates an upscaled version obtained from generating color vector \
                                      shape layers and stacking them together.",
+                                     epilog="Usage example: python main.py --input=data/zelda/5.JPG --output=zelda_hd/result.png --dpi=300 --palette-size=32 --cell-size=96x96 --flattening-steps=21",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--input", type=str, default=None, help="input image file")
     parser.add_argument("--output", type=str, default=None, help="filename for the the resulting image")
@@ -74,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--flattening-steps", type=int, default=0, help="number of steps used in the estimation of an intermidiate flat image closer to the palette")
     parser.add_argument("--mask-denoising-steps", type=int, default=5, help="number of steps used for denoising the mask")
     parser.add_argument("--render-denoising-steps", type=int, default=3, help="number of steps used for denoising the final image")
-    parser.add_argument("--deactivate-antialiasing", action='store_true', help="deactivate the use of antialiasing for the final image")
+    parser.add_argument("--use-antialiasing", action='store_true', help="use antialiasing for the final image")
     parser.add_argument("--verbose", type=str, default="1:0:0", help="frequency of information updates given by the tool provided as \"general_messages:palette_iterations:flattening_iterations\"")
     parser.add_argument("--save-grid", type=str, default=None, help="saves the computed grid in the specified filename")
     parser.add_argument("--save-palette", type=str, default=None, help="saves the computed palette in the specified filename")
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument("--palette", type=str, default=None, help="load the palette from a file")
     parser.add_argument("--palette-variety-weight", type=float, default=1.0, help="use a custom weight for the palette variety loss")
     parser.add_argument("--palette-coherence-weight", type=float, default=1.0, help="use a custom weight for the palette coherence loss")
-    parser.add_argument("--potrace-path", type=str, default="potrace", help="path to the local potrace distribution")
+    parser.add_argument("--potrace-path", type=str, default="potrace", help="path to the local potrace installation")
     parser.add_argument("--config", type=str, default=None, help="configuration file defining the arguments for the system")
     ARGS = parser.parse_args()
     if ARGS.config is not None:
@@ -208,7 +209,7 @@ if __name__ == "__main__":
         print("------------------------------------------------------------")
         print("Rendering final image...")
     start_render = time.time()
-    vectorizer.render_vector_layers(refinement_steps=ARGS.render_denoising_steps, use_antialiasing=not ARGS.deactivate_antialiasing)
+    vectorizer.render_vector_layers(refinement_steps=ARGS.render_denoising_steps, use_antialiasing=ARGS.use_antialiasing)
     end_render = time.time()
     if verbose_general:
         display_elapsed_time(start_render, end_render)
