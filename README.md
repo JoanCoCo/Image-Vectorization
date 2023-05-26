@@ -40,7 +40,10 @@ arguments:
   --verbose VERBOSE                 Frequency of information updates given by the tool provided as
                                     "general_messages:palette_iterations:flattening_iterations" (default: 1:0:0).
   --save-grid SAVE_GRID             Saves the computed grid in the specified filename (default: None).
-  --save-palette SAVE_PALETTE       Saves the computed palette in the specified filename (default: None).
+  --save-palette SAVE_PALETTE       Saves the computed palette in the specified filename (default: None). If a png,
+                                    jpg or bmp filename is provided, the palette is stored as an image. Otherwise, 
+                                    the palette is stored as a text file with UInt8-based color values by default.
+                                    Values can be stored as floats by providing the filename followed by ":f".
   --save-palette-weights SPW        Saves the computed weights in the specified filename (default: None).
   --save-flat-image SFI             Saves the computed intermediate image in the specified filename (default: None).
   --save-mask SAVE_MASK             Saves the computed segmentation mask in the specified filename (default: None).
@@ -53,4 +56,4 @@ arguments:
   --config CONFIG                   Configuration file defining the arguments for the system (default: None).
 ```
 
-Usage example: ``python main.py --input=data/zelda.jpg --output=zelda_hd/result.png --dpi=300 --palette-size=32 --cell-size=96x96 --flattening-steps=21``
+Usage example: ``python main.py --input=data/zelda.jpg --output=zelda_hd/result.png --dpi=320 --palette-size=32 --cell-size=96x96 --save-palette=out/zelda_palette.txt:f``

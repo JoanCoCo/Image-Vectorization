@@ -10,13 +10,18 @@ class PaletteGenerator_v2():
                  color_distance_weight : float = 1.0,
                  color_similarity_weight : float = 1.0,
                  display_progress_bar : bool = False) -> None:
+        # Should use progress bar?
         self.progress_bar = display_progress_bar
+        # Source image.
         self.target = torch.tensor(np.array(Image.open(src_image_file).convert("RGBA"), dtype=float) / 255.0).float()
         self.image_resolution = (self.target.shape[0], self.target.shape[1])
+        # Compute grid and cell size.
         if not grid_size is None:
+            # Grid is given, compute cell.
             self.grid_size = grid_size
             self.cell_resolution = (int(self.image_resolution[0] / grid_size[0]), int(self.image_resolution[1] / grid_size[1]))
         else:
+            # Cell is given, compute grid and padding.
             excess = (self.image_resolution[0] % cell_size[0], self.image_resolution[1] % cell_size[1])
             pad_width = (cell_size[0] - excess[0]) % cell_size[0]
             pad_height = (cell_size[1] - excess[1]) % cell_size[1]
@@ -29,23 +34,27 @@ class PaletteGenerator_v2():
         # Initial color grid.
         self.grid_palette = self.generate_grid_by_means(full_size=False).clone().detach()
         self.grid_palette.requires_grad = True
-        # Final palette estimation.
+        # Condensed palette estimation.
         self.palette_weights = torch.randn((palette_size, int(self.get_number_of_effective_cells()), 1), requires_grad=True)
         # Optimization weights.
         self.cdl_weight = color_distance_weight
         self.csl_weight = color_similarity_weight
 
+    # Obtain the colors contained in the grid.
     def get_general_palette(self) -> torch.Tensor:
         general_palette = self.grid_palette[self.get_grid_mask() > 0.0].reshape(-1, 3)
         #general_palette = torch.concat([general_palette, torch.tensor([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])], dim=0)
         return general_palette
 
+    # Apply the weights over the grid colors to obtain the final palette.
     def apply_grouping(self) -> torch.Tensor:
         weights = torch.tile(self.palette_weights, (1, 1, 3))
         general_palette = self.get_general_palette()
         general_palette = torch.tile(general_palette[None, ...], (self.palette_weights.shape[0], 1, 1))
         return torch.sum(general_palette * torch.nn.functional.softmax(weights, dim=1), dim=1)
     
+    # Convert the weights into visual representations by highlighting the mainly 
+    # contributors of the color grid.
     def get_weights_image(self, as_uint8=False, with_color=False) -> np.array:
         result = torch.zeros_like(self.grid_palette)
         weights = torch.tile(self.palette_weights, (1, 1, 3))
@@ -63,6 +72,7 @@ class PaletteGenerator_v2():
         else:
             return result.detach().numpy()
 
+    # Compute the colors of the grid by doing the mean of each cell.
     def generate_grid_by_means(self, full_size=True) -> torch.Tensor:
         referece = self.get_image(with_alpha=False)
         referece = referece.reshape((self.grid_size[0], self.cell_resolution[0], self.grid_size[1], self.cell_resolution[1], 3))
@@ -74,20 +84,24 @@ class PaletteGenerator_v2():
         grid = torch.permute(grid, (0, 2, 1, 3, 4))
         return grid.reshape(self.image_resolution[0], self.image_resolution[1], 3)
     
+    # Convert the grid into an image of the same resolution of the reference (including padding).
     def get_full_grid(self) -> torch.Tensor:
         grid = torch.tile(self.grid_palette, (1, 1, self.cell_resolution[0], self.cell_resolution[1], 1))
         grid = torch.permute(grid, (0, 2, 1, 3, 4))
         return grid.reshape(self.image_resolution[0], self.image_resolution[1], 3)
     
+    # Get reference image.
     def get_image(self, with_alpha=False) -> torch.Tensor:
         if with_alpha:
             return self.target
         else:
             return self.target[:, :, 0:3]
     
+    # Get the mask of the reference image.
     def get_mask(self) -> torch.Tensor:
         return torch.tile(self.target[:, :, 3][..., None], (1, 1, 3))
     
+    # Generate an alpha layer for the grid based on the reference image.
     def get_grid_mask(self, full_size=False) -> torch.Tensor:
         referece = self.get_mask()
         referece = referece.reshape((self.grid_size[0], self.cell_resolution[0], self.grid_size[1], self.cell_resolution[1], 3))
@@ -99,27 +113,50 @@ class PaletteGenerator_v2():
         grid = torch.permute(grid, (0, 2, 1, 3, 4))
         return grid.reshape(self.image_resolution[0], self.image_resolution[1], 3)
     
+    # Get the number of non-masked pixels.
     def get_number_of_effective_pixels(self):
         return torch.sum(self.get_mask())
     
+    # get the number of non-masked cells.
     def get_number_of_effective_cells(self):
         return torch.sum(self.get_grid_mask(full_size=False).squeeze()[:, :, 0])
 
+    # Get the difference between the reference and the color grid.
     def get_color_difference(self) -> torch.Tensor:
         color_plane = self.get_full_grid()
         true_mask = self.get_mask()
         image_plane = self.get_image(with_alpha=False)
         return torch.abs(color_plane * true_mask - image_plane * true_mask)
     
+    # Get the mean of the difference between the grid and the reference.
     def color_loss(self) -> torch.Tensor:
         return torch.sum(self.get_color_difference()) / self.get_number_of_effective_pixels()
     
-    def color_distance_loss(self) -> torch.Tensor:
+    # Mean distance of each palette color with the rest.
+    def color_distance_loss_v1(self) -> torch.Tensor:
         palette = self.apply_grouping()[None, ...]
         sp = torch.squeeze(torch.tile(palette, (self.palette_weights.shape[0], 1, 1)))
         m = torch.norm(sp - torch.transpose(sp, 0, 1), dim=-1, p=2) / 1.7320508076  # sqrt(3) = 1.7320508076
         return torch.abs(1.0 - torch.mean(m))
+    
+    # Loss based on maximizing the difference with the closest color in 
+    # the palette of each element. Requires revision.
+    def color_distance_loss_v2(self) -> torch.Tensor:
+        palette = self.apply_grouping()
+        val = torch.tensor(0.0)
+        for i in range(palette.shape[0]):
+            others = torch.concat([palette[:i], palette[i+1:]], dim=0)
+            val = val + (1.0 - self.palette_similarity_score(others, palette[i][None, ...]) / others.shape[0])
+        return val / palette.shape[0]
+        val_2 = torch.tensor(0.0)
+        for i in range(palette.shape[0]):
+            others = torch.concat([palette[:i], palette[i+1:]], dim=0)
+            extent = torch.tile(palette[i][None,...], (others.shape[0], 1))
+            diff = torch.sum(torch.pow(others - extent, 2.0), dim=-1) / 3.0
+            val_2 = val_2 + (torch.sum((diff <= thresh).float()) / others.shape[0])
+        return val_2 / palette.shape[0]
 
+    # Old color similarity loss between the palette and the grid.
     def color_similarity_loss_v1(self) -> torch.Tensor:
         reduced_palette = self.apply_grouping()
         general_palette = self.get_general_palette()
@@ -130,6 +167,10 @@ class PaletteGenerator_v2():
             val = val + torch.min(diff)
         return val
     
+    # Obtain the similarity between palettes a and b. Each element of a 
+    # is compared against all the elements in b and the closest difference
+    # is retained. The final value is the sum of all the individual values 
+    # in a. It can be used with batches.
     def palette_similarity_score(self, a, b) -> torch.Tensor:
         val = torch.tensor(0.0)
         if len(a.shape) == 2:
@@ -146,6 +187,9 @@ class PaletteGenerator_v2():
             print("WARNING: Input tensors must be of dimension 2 or 3 for palette_similarity_score.")
         return val
     
+    # Similarity loss based on computing the similarity of each grid color
+    # to the palette. However, repeated grid colors are discarded to avoid 
+    # over inforcing frequent colors.
     def color_similarity_loss_v2(self) -> torch.Tensor:
         reduced_palette = self.apply_grouping()
         general_palette = self.get_general_palette()
@@ -159,6 +203,7 @@ class PaletteGenerator_v2():
             #history_palette = torch.concat([history_palette, general_palette[i][None, ...]], dim=0)
         return val
     
+    # Fully tensor version without loop of color_similarity_loss_v2.
     def color_similarity_loss_v3(self) -> torch.Tensor:
         reduced_palette = self.apply_grouping()
         general_palette = self.get_general_palette()
@@ -177,8 +222,9 @@ class PaletteGenerator_v2():
         val = self.palette_similarity_score(relevant_general_palette, reduced_palette)
         return val
 
+    # Optimization loop.
     def optimize_palette(self, iterations : tuple[int, int] = 1000, lr : float = 0.01, verbose : int = 0) -> None:
-        # Initialization of the grid.
+        # Optimization of the grid.
         optimizer = torch.optim.Adam([self.grid_palette], lr=lr)
         for it in tqdm(range(iterations[0]), ncols=60, disable=not self.progress_bar, bar_format="|{bar}|{desc}: {percentage:3.0f}%"):
             optimizer.zero_grad()
@@ -195,7 +241,7 @@ class PaletteGenerator_v2():
         optimizer = torch.optim.Adam([self.palette_weights], lr=lr)
         for it in tqdm(range(iterations[1]), ncols=60, disable=not self.progress_bar, bar_format="|{bar}|{desc}: {percentage:3.0f}%"):
             optimizer.zero_grad()
-            cdl = self.cdl_weight * self.color_distance_loss()
+            cdl = self.cdl_weight * self.color_distance_loss_v1()
             csl = self.csl_weight * self.color_similarity_loss_v2()
             loss = cdl + csl
             if verbose > 0 and it % verbose == 0:
@@ -207,6 +253,7 @@ class PaletteGenerator_v2():
             optimizer.step()
             self.grid_palette.data.clamp_(0.0, 1.0)
 
+    # Obtain the color grid as a palette.
     def get_grid_palette(self, as_uint8=False, image_format=False) -> np.array:
         palette = self.grid_palette.squeeze().reshape(-1, 3)
         if image_format:
@@ -215,7 +262,8 @@ class PaletteGenerator_v2():
             return (palette.detach().numpy() * 255.0).astype(np.uint8)
         else:
             return palette.detach().numpy()
-        
+    
+    # Obtain the final compressed color palette.
     def get_palette(self, as_uint8=False, sort=True) -> np.array:
         palette = self.apply_grouping()
         if sort:
